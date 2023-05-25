@@ -4896,7 +4896,7 @@ WHISPER_API const char * whisper_bench_ggml_mul_mat_str(int n_threads) {
 
     ggml_time_init();
 
-    const int n_max = 128;
+    const int n_max = 8;
 
     const std::vector<size_t> sizes = {
         64, 128, 256, 512, 1024, 2048, 4096,
@@ -4914,36 +4914,40 @@ WHISPER_API const char * whisper_bench_ggml_mul_mat_str(int n_threads) {
     for (size_t i = 0; i < buf.size(); i++) buf[i] = i;
 
     for (int j = 0; j < (int) sizes.size(); j++) {
-        int n_q4_0 = 0;
-        int n_q4_1 = 0;
-        int n_q5_0 = 0;
-        int n_q5_1 = 0;
-        int n_q8_0 = 0;
-        int n_fp16 = 0;
+        // int n_q4_0 = 0;
+        // int n_q4_1 = 0;
+        // int n_q5_0 = 0;
+        // int n_q5_1 = 0;
+        // int n_q8_0 = 0;
+        // int n_fp16 = 0;
         int n_fp32 = 0;
 
         // GFLOPS/s
-        double s_q4_0 = 0.0;
-        double s_q4_1 = 0.0;
-        double s_q5_0 = 0.0;
-        double s_q5_1 = 0.0;
-        double s_q8_0 = 0.0;
-        double s_fp16 = 0.0;
+        // double s_q4_0 = 0.0;
+        // double s_q4_1 = 0.0;
+        // double s_q5_0 = 0.0;
+        // double s_q5_1 = 0.0;
+        // double s_q8_0 = 0.0;
+        // double s_fp16 = 0.0;
         double s_fp32 = 0.0;
 
         const size_t N = sizes[j];
 
-        for (int k = 0; k < 7; ++k) {
+        // for (int k = 0; k < 7; ++k) 
+        {
             const ggml_type wtype =
-                k == 0 ? GGML_TYPE_Q4_0 :
-                k == 1 ? GGML_TYPE_Q4_1 :
-                k == 2 ? GGML_TYPE_Q5_0 :
-                k == 3 ? GGML_TYPE_Q5_1 :
-                k == 4 ? GGML_TYPE_Q8_0 :
-                k == 5 ? GGML_TYPE_F16  : GGML_TYPE_F32;
+                // k == 0 ? GGML_TYPE_Q4_0 :
+                // k == 1 ? GGML_TYPE_Q4_1 :
+                // k == 2 ? GGML_TYPE_Q5_0 :
+                // k == 3 ? GGML_TYPE_Q5_1 :
+                // k == 4 ? GGML_TYPE_Q8_0 :
+                // k == 5 ? GGML_TYPE_F16  : 
+                GGML_TYPE_F32;
 
-            double & s = k == 0 ? s_q4_0 : k == 1 ? s_q4_1 : k == 2 ? s_q5_0 : k == 3 ? s_q5_1 : k == 4 ? s_q8_0 : k == 5 ? s_fp16 : /*k == 6*/ s_fp32;
-            int    & n = k == 0 ? n_q4_0 : k == 1 ? n_q4_1 : k == 2 ? n_q5_0 : k == 3 ? n_q5_1 : k == 4 ? n_q8_0 : k == 5 ? n_fp16 : /*k == 6*/ n_fp32;
+            // double & s = k == 0 ? s_q4_0 : k == 1 ? s_q4_1 : k == 2 ? s_q5_0 : k == 3 ? s_q5_1 : k == 4 ? s_q8_0 : k == 5 ? s_fp16 : /*k == 6*/ s_fp32;
+            // int    & n = k == 0 ? n_q4_0 : k == 1 ? n_q4_1 : k == 2 ? n_q5_0 : k == 3 ? n_q5_1 : k == 4 ? n_q8_0 : k == 5 ? n_fp16 : /*k == 6*/ n_fp32;
+            double & s = s_fp32;
+            int    & n = n_fp32;
 
             struct ggml_init_params gparams = {
                 /*.mem_size   =*/ buf.size(),
@@ -4988,18 +4992,20 @@ WHISPER_API const char * whisper_bench_ggml_mul_mat_str(int n_threads) {
         }
 
         // Q4_0 | Q4_1
-        snprintf(strbuf, sizeof(strbuf), "%4zu x %4zu: Q4_0 %7.1f GFLOPS (%3d runs) | Q4_1 %7.1f GFLOPS (%3d runs)\n",
-                N, N, s_q4_0, n_q4_0, s_q4_1, n_q4_1);
-        s += strbuf;
+        // snprintf(strbuf, sizeof(strbuf), "%4zu x %4zu: Q4_0 %7.1f GFLOPS (%3d runs) | Q4_1 %7.1f GFLOPS (%3d runs)\n",
+        //         N, N, s_q4_0, n_q4_0, s_q4_1, n_q4_1);
+        // s += strbuf;
 
         // Q5_0 | Q5_1 | Q8_0
-        snprintf(strbuf, sizeof(strbuf), "%4zu x %4zu: Q5_0 %7.1f GFLOPS (%3d runs) | Q5_1 %7.1f GFLOPS (%3d runs) | Q8_0 %7.1f GFLOPS (%3d runs)\n",
-                N, N, s_q5_0, n_q5_0, s_q5_1, n_q5_1, s_q8_0, n_q8_0);
-        s += strbuf;
+        // snprintf(strbuf, sizeof(strbuf), "%4zu x %4zu: Q5_0 %7.1f GFLOPS (%3d runs) | Q5_1 %7.1f GFLOPS (%3d runs) | Q8_0 %7.1f GFLOPS (%3d runs)\n",
+        //         N, N, s_q5_0, n_q5_0, s_q5_1, n_q5_1, s_q8_0, n_q8_0);
+        // s += strbuf;
 
         // F16 | F32
-        snprintf(strbuf, sizeof(strbuf), "%4zu x %4zu: F16  %7.1f GFLOPS (%3d runs) | F32  %7.1f GFLOPS (%3d runs)\n",
-                N, N, s_fp16, n_fp16, s_fp32, n_fp32);
+        // snprintf(strbuf, sizeof(strbuf), "%4zu x %4zu: F16  %7.1f GFLOPS (%3d runs) | F32  %7.1f GFLOPS (%3d runs)\n",
+        //         N, N, s_fp16, n_fp16, s_fp32, n_fp32);
+        // s += strbuf;
+        snprintf(strbuf, sizeof(strbuf), "%4zu x %4zu: F32  %7.1f GFLOPS (%3d runs)\n", N, N, s_fp32, n_fp32);
         s += strbuf;
     }
 
