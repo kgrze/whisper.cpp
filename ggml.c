@@ -1733,6 +1733,21 @@ quantize_fns_t ggml_internal_get_quantize_fn(size_t i) {
     const __m128 t1 = _mm_hadd_ps(t0, t0);                        \
     res = _mm_cvtss_f32(_mm_hadd_ps(t1, t1));                     \
 }
+#define GGML_F32x8_REDUCE2(res, x)                                \
+{                                                                 \
+    float __attribute__((aligned(16))) TmpRes[4];                 \
+    __m128 sum = _mm_add_ps(_mm256_extractf128_ps(x, 0),          \
+                            _mm256_extractf128_ps(x, 1));         \
+    _mm_store_ps(TmpRes, sum);                                    \
+    res = TmpRes[0] + TmpRes[1] + TmpRes[2] + TmpRes[3];          \
+}
+static inline float f32x8_reduce_one(__m256 vec)
+{
+    float res;
+    GGML_F32x8_REDUCE2(res, vec)
+    return res;
+}
+#define GGML_F32x8_REDUCE_ONE(x) f32x8_reduce_one(x)
 // TODO: is this optimal ?
 
 #define GGML_F32_VEC        GGML_F32x8
@@ -1744,6 +1759,7 @@ quantize_fns_t ggml_internal_get_quantize_fn(size_t i) {
 #define GGML_F32_VEC_ADD    GGML_F32x8_ADD
 #define GGML_F32_VEC_MUL    GGML_F32x8_MUL
 #define GGML_F32_VEC_REDUCE GGML_F32x8_REDUCE
+#define GGML_F32_VEC_REDUCE_ONE GGML_F32x8_REDUCE_ONE
 
 // F16 AVX
 
@@ -9601,30 +9617,88 @@ static void ggml_compute_forward_mul_mat_f32(
     const int ir0 = dr*ith;
     const int ir1 = MIN(ir0 + dr, nr);
 
-    for (int ir = ir0; ir < ir1; ++ir) {
-        // src0 indices
-        const int i03 = ir/(ne02*ne01);
-        const int i02 = (ir - i03*ne02*ne01)/ne01;
-        const int i01 = (ir - i03*ne02*ne01 - i02*ne01);
+#if 0 // default, scalar
+    for (int row = ir0; row < ir1; row++) 
+    {
+        int dim3d_offset = row / (nr * ne11);
 
-        for (int64_t ic = 0; ic < ne11; ++ic) {
-            // src1 indices
-            const int i13 = i03;
-            const int i12 = i02;
-            const int i11 = ic;
+        int row_offset = row*ne00;
+        float *src0_buf = (float *)src0->data + dim3d_offset + row_offset;
 
-            // dst indices
-            const int i0 = i01;
-            const int i1 = i11;
-            const int i2 = i02;
-            const int i3 = i03;
+        for (int col = 0; col < ne11; col++) 
+        {
+            int col_offset = col*ne11;
+            float *src1_buf = (float *)src1->data + dim3d_offset + col_offset;
 
-            ggml_vec_dot_f32(ne00,
-                    (float *) ((char *)  dst->data + (i0*nb0 + i1*nb1 + i2*nb2 + i3*nb3)),
-                    (float *) ((char *) src0->data + (i01*nb01 + i02*nb02 + i03*nb03)),
-                    (float *) ((char *) src1->data + (i11*nb11 + i12*nb12 + i13*nb13)));
+            float *dst_buf = (float *)dst->data + dim3d_offset + col_offset + row;
+
+            *dst_buf = kgrze_dot(src0_buf, src1_buf, ne00);
         }
     }
+#elif 1 // Using parametrized microkernel for better cache reuse, SIMD enabled
+
+#define UKERN_4x4 1
+
+#if UKERN_4x4
+#define UKERN_COLS 4
+#define UKERN_ROWS 4
+#endif
+
+    for(int rps = ir0; rps < ir1; rps += UKERN_ROWS)
+    {
+        int dim3d_offset = rps / (nr * ne11);
+        for(int cps = 0; cps < ne11; cps += UKERN_COLS)
+        {
+            for(int row = 0; row < UKERN_ROWS; row++)
+            {
+                int row_start = (rps + row) * ne11;
+                float *src0_buf = (float *)src0->data + dim3d_offset +  row_start;
+
+                int col_start[UKERN_COLS];
+                float *src1_buf[UKERN_COLS];
+                float *dst_buf[UKERN_COLS];
+
+                float sumf0[UKERN_COLS];
+                float sumf1[UKERN_COLS];
+
+                GGML_F32_VEC vsum0[UKERN_COLS] = { GGML_F32_VEC_ZERO };
+                GGML_F32_VEC vsum1[UKERN_COLS] = { GGML_F32_VEC_ZERO };
+
+                for(int i = 0; i < UKERN_COLS; i++)
+                {
+                    col_start[i] = (cps + i) * ne11;
+                    src1_buf[i] = (float *)src1->data + dim3d_offset + col_start[i];
+                    dst_buf[i] = (float *)dst->data  + dim3d_offset + col_start[i] + (rps + row);
+                }
+
+                for (int i = 0; i < ne11; i += 2*GGML_F32_EPR)
+                {
+                    GGML_F32_VEC vsrc0_0 = GGML_F32_VEC_LOAD(src0_buf + i + 0*GGML_F32_EPR);
+                    GGML_F32_VEC vsrc0_1 = GGML_F32_VEC_LOAD(src0_buf + i + 1*GGML_F32_EPR);
+
+                    GGML_F32_VEC vsrc1_0[UKERN_COLS];
+                    GGML_F32_VEC vsrc1_1[UKERN_COLS];
+
+                    for(int j = 0; j < UKERN_COLS; j++)
+                    {
+                        vsrc1_0[j] = GGML_F32_VEC_LOAD(src1_buf[j] + i + 0*GGML_F32_EPR);
+                        vsrc1_1[j] = GGML_F32_VEC_LOAD(src1_buf[j] + i + 1*GGML_F32_EPR);
+
+                        vsum0[j] = GGML_F32_VEC_FMA(vsum0[j], vsrc0_0, vsrc1_0[j]);
+                        vsum1[j] = GGML_F32_VEC_FMA(vsum1[j], vsrc0_1, vsrc1_1[j]);
+                    }
+                }
+
+                for(int i = 0; i < UKERN_COLS; i++)
+                {
+                    sumf0[i] = GGML_F32_VEC_REDUCE_ONE(vsum0[i]);
+                    sumf1[i] = GGML_F32_VEC_REDUCE_ONE(vsum1[i]);
+                    *dst_buf[i] = sumf0[i] + sumf1[i];
+                }
+            }
+        }
+    }
+#endif
 
     //int64_t t1 = ggml_perf_time_us();
     //static int64_t acc = 0;
