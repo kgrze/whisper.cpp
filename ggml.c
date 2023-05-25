@@ -9637,10 +9637,20 @@ static void ggml_compute_forward_mul_mat_f32(
     }
 #elif 1 // Using parametrized microkernel for better cache reuse, SIMD enabled
 
-#define UKERN_4x4 1
+// #define UKERN_4x4
+#define UKERN_4x8
+// #define UKERN_8x4
 
-#if UKERN_4x4
+#ifdef UKERN_4x4
 #define UKERN_COLS 4
+#define UKERN_ROWS 4
+#endif
+#ifdef UKERN_4x8
+#define UKERN_COLS 4
+#define UKERN_ROWS 8
+#endif
+#ifdef UKERN_8x4
+#define UKERN_COLS 8
 #define UKERN_ROWS 4
 #endif
 
