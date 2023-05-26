@@ -1628,6 +1628,7 @@ quantize_fns_t ggml_internal_get_quantize_fn(size_t i) {
 #define GGML_F32_VEC_ADD    GGML_F32x4_ADD
 #define GGML_F32_VEC_MUL    GGML_F32x4_MUL
 #define GGML_F32_VEC_REDUCE GGML_F32x4_REDUCE
+#define GGML_F32_VEC_REDUCE_ONE GGML_F32x4_REDUCE_ONE
 
 // F16 NEON
 
